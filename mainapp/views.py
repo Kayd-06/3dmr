@@ -117,29 +117,28 @@ def search(request):
     if category:
         url_params += 'category=' + category
 
-    models = Model.objects.filter(latest=True)
+    if not query and not tag and not category:
+        return redirect(index)
+
+    filtered_models = Model.objects.filter(latest=True)
 
     if tag:
         try:
             key, value = get_kv(tag)
         except ValueError:
             return redirect(index)
-        filtered_models = models.filter(tags__contains={key: value})
-    elif category:
-        filtered_models = models.filter(categories__name=category)
-    elif query:
+        filtered_models = filtered_models.filter(tags__contains={key: value})
+    if category:
+        filtered_models = filtered_models.filter(categories__name=category)
+    if query:
         filtered_models = \
-            models.filter(title__icontains=query) | \
-            models.filter(description__icontains=query)
+            filtered_models.filter(title__icontains=query) | \
+            filtered_models.filter(description__icontains=query)
 
-    try:
-        if not admin(request):
-            filtered_models = filtered_models.filter(is_hidden=False)
+    if not admin(request):
+        filtered_models = filtered_models.filter(is_hidden=False)
 
-        ordered_models = filtered_models.order_by('-pk')
-    except UnboundLocalError:
-        # filtered_models isn't set, redirect to homepage
-        return redirect(index)
+    ordered_models = filtered_models.order_by('-pk')
 
     if not ordered_models:
         results = None
