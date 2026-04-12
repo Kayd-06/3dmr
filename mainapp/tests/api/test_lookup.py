@@ -92,8 +92,8 @@ class LookupRangeAPIViewTests(BaseViewTestMixin, TestCase):
 
 class LookupTitleAPIViewTests(BaseViewTestMixin, TestCase):
 
-    def test_search_title_success(self):
-        response = self.client.get(reverse("search_title", args=[self.model1.title, 1]))
+    def test_search_model_success(self):
+        response = self.client.get(reverse("search_model", args=[self.model1.title, 1]))
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn(self.model1.model_id, data)

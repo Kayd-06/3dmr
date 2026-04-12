@@ -189,8 +189,8 @@ def search_range(request, latitude, longitude, distance, page_id=1):
     return api_paginate(models, page_id)
 
 @any_origin
-def search_title(request, title, page_id=1):
-    models = Model.objects.filter(latest=True, title__icontains=title)
+def search_model(request, query, page_id=1):
+    models = Model.objects.filter(latest=True, title__icontains=query)
 
     if not admin(request):
         models = models.filter(is_hidden=False)
