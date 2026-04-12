@@ -9,6 +9,8 @@ from django.contrib.auth.models import User
 from django.contrib.auth import logout
 from django.contrib import messages
 from django.db import transaction
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank, TrigramSimilarity
+from django.db.models import Q
 from .models import Model, Category, Change, Ban, Location
 from .forms import UploadFileForm, UploadFileMetadataForm, MetadataForm, UserDescriptionForm
 from .utils import get_kv, update_last_page, get_last_page, CHANGES, admin, LICENSES_DISPLAY
@@ -114,11 +116,11 @@ def search(request):
         url_params += 'query=' + query
     if tag:
         url_params += 'tag=' + tag
-    if category:
-        url_params += 'category=' + category
-
     if not query and not tag and not category:
         return redirect(index)
+
+    if category:
+        url_params += 'category=' + category
 
     filtered_models = Model.objects.filter(latest=True)
 
@@ -130,15 +132,19 @@ def search(request):
         filtered_models = filtered_models.filter(tags__contains={key: value})
     if category:
         filtered_models = filtered_models.filter(categories__name=category)
+    
     if query:
-        filtered_models = \
-            filtered_models.filter(title__icontains=query) | \
-            filtered_models.filter(description__icontains=query)
+        vector = SearchVector('title', weight='A') + SearchVector('description', weight='B')
+        search_query = SearchQuery(query)
+        filtered_models = filtered_models.annotate(
+            rank=SearchRank(vector, search_query),
+            similarity=TrigramSimilarity('title', query) + TrigramSimilarity('description', query)
+        ).filter(Q(rank__gte=0.01) | Q(similarity__gt=0.4))
 
-    if not admin(request):
-        filtered_models = filtered_models.filter(is_hidden=False)
-
-    ordered_models = filtered_models.order_by('-pk')
+    if query:
+        ordered_models = filtered_models.order_by('-rank', '-similarity', '-pk')
+    else:
+        ordered_models = filtered_models.order_by('-pk')
 
     if not ordered_models:
         results = None

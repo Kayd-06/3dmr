@@ -49,6 +49,18 @@ class SearchFullAPIViewTest(BaseViewTestMixin, TestCase):
         self.assertEqual(len(results), 3)
         self.assertSetEqual({result[1] for result in results}, {"Model 1", "Model 3", "Model 4 No Loc"})
 
+    def test_search_full_query_filter(self):
+        payload = {"query": "Model", "format": ["id", "title"]}
+        response = self.client.post(
+            reverse("search_full"),
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        results = json.loads(response.content)
+        self.assertEqual(len(results), 3)
+        self.assertSetEqual({result[1] for result in results}, {"Model 1", "Model 3", "Model 4 No Loc"})
+
     def test_search_full_tags_filter(self):
         payload = {"tags": {"color": "red"}, "format": ["id", "title"]}
         response = self.client.post(

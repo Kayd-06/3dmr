@@ -6,6 +6,8 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse, HttpResponse, Http404, HttpResponseBadRequest, HttpResponseServerError
 from django.core.paginator import Paginator, EmptyPage
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank, TrigramSimilarity
+from django.db.models import Q
 from .models import Model
 from .utils import get_kv, admin
 from django.views.decorators.csrf import csrf_exempt
@@ -15,6 +17,8 @@ RESULTS_PER_API_CALL= 20
 
 # returns a paginated json response
 def api_paginate(models, page_id):
+    if hasattr(models, 'ordered') and not models.ordered:
+        models = models.order_by('model_id')
     paginator = Paginator(models, RESULTS_PER_API_CALL)
 
     try:
@@ -190,10 +194,17 @@ def search_range(request, latitude, longitude, distance, page_id=1):
 
 @any_origin
 def search_model(request, query, page_id=1):
-    models = Model.objects.filter(latest=True, title__icontains=query)
+    vector = SearchVector('title', weight='A') + SearchVector('description', weight='B')
+    search_query = SearchQuery(query)
+    models = Model.objects.filter(latest=True).annotate(
+        rank=SearchRank(vector, search_query),
+        similarity=TrigramSimilarity('title', query) + TrigramSimilarity('description', query)
+    ).filter(Q(rank__gte=0.01) | Q(similarity__gt=0.1))
 
     if not admin(request):
         models = models.filter(is_hidden=False)
+
+    models = models.order_by('-rank', 'model_id')
 
     return api_paginate(models, page_id)
 
@@ -229,9 +240,23 @@ def search_full(request):
         except (ValueError, TypeError):
             return HttpResponseBadRequest('Invalid range parameters')
 
+    query = data.get('query')
+    if query:
+        vector = SearchVector('title', weight='A') + SearchVector('description', weight='B')
+        search_query = SearchQuery(query)
+        models = models.annotate(
+            rank_query=SearchRank(vector, search_query),
+            similarity_query=TrigramSimilarity('title', query) + TrigramSimilarity('description', query)
+        ).filter(Q(rank_query__gte=0.01) | Q(similarity_query__gt=0.1))
+
     title = data.get('title')
     if title:
-        models = models.filter(title__icontains=title)
+        vector = SearchVector('title', weight='A')
+        search_query = SearchQuery(title)
+        models = models.annotate(
+            rank_title=SearchRank(vector, search_query),
+            similarity_title=TrigramSimilarity('title', title)
+        ).filter(Q(rank_title__gte=0.01) | Q(similarity_title__gt=0.1))
 
     tags = data.get('tags')
     if tags:
@@ -243,7 +268,14 @@ def search_full(request):
         for category in categories:
             models = models.filter(categories__name=category)
 
-    models = models.order_by('model_id')
+    if query and title:
+        models = models.order_by('-rank_query', '-similarity_query', '-rank_title', '-similarity_title', 'model_id')
+    elif query:
+        models = models.order_by('-rank_query', '-similarity_query', 'model_id')
+    elif title:
+        models = models.order_by('-rank_title', '-similarity_title', 'model_id')
+    else:
+        models = models.order_by('model_id')
 
     try:
         page_id = int(data.get('page', 1))
@@ -255,6 +287,8 @@ def search_full(request):
     if not fmt:
         return api_paginate(models, page_id)
 
+    if hasattr(models, 'ordered') and not models.ordered:
+        models = models.order_by('model_id')
     paginator = Paginator(models, RESULTS_PER_API_CALL)
 
     try:

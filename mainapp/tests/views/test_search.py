@@ -16,9 +16,17 @@ class SearchViewTest(BaseViewTestMixin, TestCase):
         response = self.client.get(reverse("search"), {"query": "Model 1"})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Model 1")
-        self.assertNotContains(response, "Model 2")
-        self.assertNotContains(response, "Model 3")
-        self.assertEqual(len(response.context["models"]), 1)
+        # Typo tolerance will match "Model 2" and "Model 3" as well, but "Model 1" should be ranked first.
+        self.assertEqual(response.context["models"][0].model_id, self.model1.model_id)
+        self.assertGreaterEqual(len(response.context["models"]), 1)
+
+    def test_search_typo_tolerance(self):
+        # Searching for "Modl 1" (typ0) should still find "Model 1"
+        response = self.client.get(reverse("search"), {"query": "Modl 1"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Model 1")
+        # Should rank the most similar one first
+        self.assertEqual(response.context["models"][0].model_id, self.model1.model_id)
 
     def test_search_by_tag_filter(self):
         response = self.client.get(reverse("search"), {"tag": "color=red"})
