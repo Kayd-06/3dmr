@@ -193,12 +193,12 @@ def search_range(request, latitude, longitude, distance, page_id=1):
     return api_paginate(models, page_id)
 
 @any_origin
-def search_model(request, query, page_id=1):
-    vector = SearchVector('title', weight='A') + SearchVector('description', weight='B')
-    search_query = SearchQuery(query)
+def search_title(request, title, page_id=1):
+    vector = SearchVector('title', weight='A')
+    search_query = SearchQuery(title)
     models = Model.objects.filter(latest=True).annotate(
         rank=SearchRank(vector, search_query),
-        similarity=TrigramSimilarity('title', query) + TrigramSimilarity('description', query)
+        similarity=TrigramSimilarity('title', title)
     ).filter(Q(rank__gte=0.01) | Q(similarity__gt=0.1))
 
     if not admin(request):
